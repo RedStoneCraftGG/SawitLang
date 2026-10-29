@@ -48,6 +48,27 @@ go build -o sawit.exe .
 Tambahkan folder hasil build ke `PATH` agar dapat dipanggil langsung dari Command
 Prompt sebagai `sawit`.
 
+---
+
+Perintah `build` mendeteksi GCC/Clang secara otomatis. Compiler juga dapat dipilih
+secara eksplisit dengan `--compiler gcc` atau `--compiler clang`.
+
+Mode `run` membuat executable sementara, menjalankannya, lalu menghapusnya. Jadi
+pengguna cukup memberikan satu file `.sawit` tanpa mengelola hasil build manual.
+
+Versi awal menggunakan translasi berbasis token sehingga keyword di dalam komentar
+dan string tidak ikut berubah. Runtime helper berada di `sawit_runtime.h` dan otomatis
+disertakan oleh hasil transpiler.
+
+Helper yang tersedia: `buzzer`, `bungkam`, `bukaSuara`, `demoMasyarakat`, `pajak`,
+`MBG`, `nyawit`, `cair`, `beli`, `jual`, dan `bersihkanLayar`.
+
+`MBG` mengisi ledger anggaran, `cair` mencairkan saldo yang tersedia, sedangkan
+`beli` dan `jual` memakai allocator yang melacak pointer. `jual` mengabaikan
+pointer yang tidak dilacak, sehingga double-free dan `jual` pada variabel stack
+aman (no-op). `bungkam` dan `bukaSuara` mengontrol output stdout/stderr tanpa
+menutup stream.
+
 # Kamus MVP
 
 Ringkasan seluruh kata kunci dan fungsi yang dikenali transpiler. Kolom "Padanan"
