@@ -1,0 +1,17 @@
+imporBibit <stdio.h>
+
+hutan sapa() {
+    buzzer("Nyawit!\n");
+}
+
+tandan panenUtama() {
+    tandan anggaran = MBG(1000);
+    pajak(anggaran, 11);
+    tandan dicairkan = cair(anggaran);
+    nyawit(sapa);
+    bungkam(stdout);
+    buzzer("Pesan ini dibungkam.\n");
+    bukaSuara(stdout);
+    demoMasyarakat("Dana cair: %d", dicairkan);
+    setor 0;
+}

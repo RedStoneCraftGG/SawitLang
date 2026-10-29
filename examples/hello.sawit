@@ -1,0 +1,6 @@
+imporBibit <stdio.h>
+
+tandan panenUtama() {
+    buzzer("Hidup Jokowi!\n");
+    setor 0;
+}

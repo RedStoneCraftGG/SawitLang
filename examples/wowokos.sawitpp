@@ -1,0 +1,261 @@
+// WowokOS 1.1
+// Ditulis murni dalam .sawitpp (C++); dengan bantuan AI. Yakali ditulis manual aowaowaowok
+
+imporBibit <cstdio>
+imporBibit <cstring>
+imporBibit <cstdlib>
+imporBibit <string>
+
+RUU MAKS_PERINTAH 64
+PerPres VERSI "WowokOS 1.1"
+
+wilayahKebun SawitOS {
+
+    perkebunan Kebun {
+        jalanProduksi:
+            Kebun() { luas = 100; produktivitas = 12.5f; }
+            tandan panenTahunan() { setor luas * 20; }
+        lahanPribadi:
+            tandan luas;
+        lahanPejabat:
+            pertalite produktivitas;
+    };
+
+    hutan garis() {
+        buzzer("========================================\n");
+    }
+
+    hutan pesanBoot() {
+        garis();
+        buzzer(" " VERSI " - Sawit Text Operating System\n");
+        buzzer(" (c) Koperasi Kebun Wowok 2026\n");
+        buzzer(" Memuat kernel... OK\n");
+        buzzer(" Memuat driver tandan... OK\n");
+        buzzer(" Memeriksa anggaran sistem... OK\n");
+        garis();
+        demoMasyarakat("Kernel %s siap", VERSI);
+    }
+
+    hutan bantuan() {
+        buzzer("Perintah WowokOS:\n");
+        buzzer("  help      daftar perintah\n");
+        buzzer("  tentang   info sistem\n");
+        buzzer("  cls       bersihkan layar\n");
+        buzzer("  dir       isi kebun virtual\n");
+        buzzer("  mem       demo alokasi memori (beli/jual/new/delete)\n");
+        buzzer("  saldo     cek anggaran (MBG/cair)\n");
+        buzzer("  pajak     potong pajak\n");
+        buzzer("  menu      demo rapat/kasus (switch/case)\n");
+        buzzer("  masuk     demo login (pidato/janji + relokasi)\n");
+        buzzer("  waktu     uptime (pertamax/pertalite)\n");
+        buzzer("  info      demo perkebunan Kebun (class)\n");
+        buzzer("  bisu      mode senyap (bungkam/bukaSuara)\n");
+        buzzer("  nyanyi    demo nyawit()\n");
+        buzzer("  reboot    boot ulang\n");
+        buzzer("  shutdown  matikan sistem\n");
+    }
+
+    hutan tentang() {
+        garis();
+        buzzer(VERSI " - kernel Sawit/S++\n");
+        buzzer("Semua proses berjalan di dalam kebun virtual.\n");
+        garis();
+    }
+
+    hutan direktori() {
+        kopdes Berkas {
+            pelepah nama;
+            tandan ukuran;
+            panen direktori;
+        };
+        kopdes Berkas daftar[5] = {
+            {"KERNEL", 4096, sesuai},
+            {"BIBIT", 2048, sesuai},
+            {"PANEN", 1337, sesuai},
+            {".TERSEMUNYI", 512, sesuai},
+            {"AUTOEXEC.SAWIT", 2048, hoaks}
+        };
+        buzzer(" Volume KEBUN-WOWOK\n\n");
+        muter (tandan i = 0; i < 5; i = i + 1) {
+            kalauPanen (daftar[i].nama[0] == '.') {
+                lanjutPidato;
+            }
+            kalauPanen (daftar[i].direktori) {
+                buzzer("  <DIR>  %s\n", daftar[i].nama.c_str());
+            } kalauTidak {
+                buzzer("  %5d  %s\n", daftar[i].ukuran, daftar[i].nama.c_str());
+            }
+        }
+    }
+
+    hutan memori() {
+        tandan blok = 0;
+        hutan *a = beli(32);
+        kalauPanen (a != 0) blok = blok + 1;
+        hutan *b = beli(64);
+        kalauPanen (b != 0) blok = blok + 1;
+        Kebun *k = bakarHutan Kebun;
+        buzzer("Alokasi ter-lacak: %d blok\n", blok);
+        buzzer("Objek Kebun di heap: %p\n", (void*)k);
+        muter (tandan i = 0; i < 3; i = i + 1) {
+            kalauPanen (i == 1) {
+                lanjutOmonOmon;
+            }
+            buzzer("  iterasi memori %d\n", i);
+        }
+        jual(a);
+        jual(b);
+        gusur k;
+        blok = 0;
+        buzzer("Setelah jual/gusur: %d blok\n", blok);
+    }
+
+    hutan saldoSistem() {
+        tandan anggaran = MBG(1000);
+        tandan cairan = cair(250);
+        buzzer("Saldo awal: %d, cair: %d\n", anggaran, cairan);
+    }
+
+    hutan pajakSistem() {
+        tandan dana = MBG(1000);
+        pajak(dana, 11);
+        buzzer("Saldo setelah pajak 11%%: %d\n", dana);
+    }
+
+    hutan menu() {
+        tandan pilihan = 0;
+        buah baris[16];
+        buzzer("Pilih menu (1-3): ");
+        kalauPanen (fgets(baris, 16, stdin) != 0) {
+            pilihan = atoi(baris);
+        }
+        rapat (pilihan) {
+            kasus 1:
+                buzzer("Anda memilih: Tanam\n");
+                pulang;
+            kasus 2:
+                buzzer("Anda memilih: Tebang\n");
+                pulang;
+            kasus 3:
+                buzzer("Anda memilih: Panen\n");
+                pulang;
+            kasus 0:
+            default:
+                demoMasyarakat("Pilihan tidak dikenal: %d", pilihan);
+                pulang;
+        }
+    }
+
+    hutan masuk() {
+        tandan percobaan = 0;
+        buah sandi[32];
+        cobaLagi:
+        pidato {
+            buzzer("Password: ");
+            kalauPanen (fgets(sandi, 32, stdin) == 0) {
+                relokasi cobaLagi;
+            }
+            sandi[strcspn(sandi, "\n")] = '\0';
+            kalauPanen (strcmp(sandi, "sawit") == 0) {
+                buzzer("Login berhasil!\n");
+                setor;
+            }
+            percobaan = percobaan + 1;
+            kalauPanen (percobaan >= 3) {
+                demoMasyarakat("Terlalu banyak percobaan; akses ditolak");
+                setor;
+            }
+            buzzer("Password salah, coba lagi.\n");
+        } janji (strcmp(sandi, "sawit") != 0);
+        buzzer("Selamat datang di kebun.\n");
+    }
+
+    hutan waktuJalan() {
+        pertamax detik = 0.0;
+        pertalite beban = 0.0f;
+        selama (detik < 3.0) {
+            beban = beban + 0.5f;
+            buzzer("Uptime: %.1f detik, beban: %.1f%%\n", detik, beban);
+            detik = detik + 0.5;
+        }
+    }
+
+    hutan infoKebun() {
+        Kebun k;
+        buzzer("Luas kebun: %d hektar\n", k.panenTahunan() / 20);
+        buzzer("Panen tahunan: %d tandan\n", k.panenTahunan());
+    }
+
+    hutan modeBisu() {
+        rodok bisu = hoaks;
+        bisu = sesuai;
+        bungkam(stdout);
+        buzzer("Pesan ini harusnya diam.\n");
+        bukaSuara(stdout);
+        buzzer("Sekarang suara menyala lagi.\n");
+    }
+
+    hutan nyanyi() {
+        buzzer("Memanggil bantuan lewat nyawit()...\n");
+        nyawit(bantuan);
+    }
+
+}
+
+using namespace SawitOS;
+
+tandan panenUtama() {
+    buah perintah[MAKS_PERINTAH];
+    panen berjalan = sesuai;
+
+    pesanBoot();
+
+    selama (berjalan) {
+        buzzer("\nWowokOS> ");
+        kalauPanen (fgets(perintah, MAKS_PERINTAH, stdin) == 0) {
+            pulang;
+        }
+        perintah[strcspn(perintah, "\n")] = '\0';
+        kalauPanen (strcmp(perintah, "") == 0) {
+            lanjutPidato;
+        }
+        kalauPanen (strcmp(perintah, "help") == 0 || strcmp(perintah, "bantuan") == 0) {
+            bantuan();
+        } kalauTidak kalauPanen (strcmp(perintah, "tentang") == 0 || strcmp(perintah, "ver") == 0) {
+            tentang();
+        } kalauTidak kalauPanen (strcmp(perintah, "dir") == 0 || strcmp(perintah, "ls") == 0) {
+            direktori();
+        } kalauTidak kalauPanen (strcmp(perintah, "cls") == 0 || strcmp(perintah, "clear") == 0) {
+            bersihkanLayar();
+        } kalauTidak kalauPanen (strcmp(perintah, "mem") == 0) {
+            memori();
+        } kalauTidak kalauPanen (strcmp(perintah, "saldo") == 0) {
+            saldoSistem();
+        } kalauTidak kalauPanen (strcmp(perintah, "pajak") == 0) {
+            pajakSistem();
+        } kalauTidak kalauPanen (strcmp(perintah, "menu") == 0) {
+            menu();
+        } kalauTidak kalauPanen (strcmp(perintah, "masuk") == 0) {
+            masuk();
+        } kalauTidak kalauPanen (strcmp(perintah, "waktu") == 0) {
+            waktuJalan();
+        } kalauTidak kalauPanen (strcmp(perintah, "info") == 0) {
+            infoKebun();
+        } kalauTidak kalauPanen (strcmp(perintah, "bisu") == 0) {
+            modeBisu();
+        } kalauTidak kalauPanen (strcmp(perintah, "nyanyi") == 0) {
+            nyanyi();
+        } kalauTidak kalauPanen (strcmp(perintah, "reboot") == 0) {
+            buzzer("Boot ulang kernel...\n");
+            pesanBoot();
+        } kalauTidak kalauPanen (strcmp(perintah, "shutdown") == 0 || strcmp(perintah, "keluar") == 0) {
+            buzzer("Sistem dimatikan. Sampai jumpa.\n");
+            berjalan = hoaks;
+        } kalauTidak {
+            demoMasyarakat("Perintah tidak dikenal: %s", perintah);
+            buzzer("Ketik 'help' untuk bantuan.\n");
+        }
+    }
+
+    setor 0;
+}

@@ -1,0 +1,13 @@
+tandan panenUtama() {
+    tandan dana = MBG(500);
+    tandan cairan = cair(200);
+    buah *bibit = beli(4);
+
+    kalauPanen (bibit != 0) {
+        buzzer("Dana: %d, cair: %d\n", dana, cairan);
+        jual(bibit);
+    }
+
+    demoMasyarakat("Saldo cair berhasil diproses");
+    setor 0;
+}

@@ -1,0 +1,107 @@
+imporBibit <stdio.h>
+imporBibit <stdlib.h>
+imporBibit <string.h>
+
+hutan garis() {
+    buzzer("----------------------------------------\n");
+}
+
+hutan boot() {
+    garis();
+    buzzer(" WowokOS 1.0 - Sawit Text Operating System\n");
+    buzzer(" Copyright (C) Koperasi Kebun Wowok 2026\n");
+    buzzer(" Memuat kernel... OK\n");
+    buzzer(" Memuat driver tandan... OK\n");
+    buzzer(" Memeriksa anggaran sistem... OK\n");
+    garis();
+}
+
+hutan bantuan() {
+    buzzer("Perintah WowokOS:\n");
+    buzzer("  bantuan    tampilkan daftar perintah\n");
+    buzzer("  tentang    informasi sistem\n");
+    buzzer("  dir        lihat isi kebun virtual\n");
+    buzzer("  cls        bersihkan layar\n");
+    buzzer("  saldo      cek saldo anggaran sistem\n");
+    buzzer("  pajak      potong saldo sistem\n");
+    buzzer("  reboot     mulai ulang WowokOS\n");
+    buzzer("  shutdown   matikan sistem\n");
+    buzzer("  keluar     alias shutdown\n");
+}
+
+hutan tentang() {
+    garis();
+    buzzer("WowokOS adalah simulasi OS berbasis teks.\n");
+    buzzer("Kernel ditulis menggunakan bahasa Sawit/S++.\n");
+    buzzer("Semua proses berjalan di dalam kebun virtual.\n");
+    garis();
+}
+
+hutan direktori() {
+    buzzer("Volume KEBUN-WOWOK\n\n");
+    buzzer("  <DIR>  KERNEL\n");
+    buzzer("  <DIR>  BIBIT\n");
+    buzzer("  <DIR>  PANEN\n");
+    buzzer("  4096    AUTOEXEC.SAWIT\n");
+    buzzer("  2048    CONFIG.SAWIT\n");
+    buzzer("  1337    PEMBUKA.TXT\n");
+}
+
+hutan saldoSistem() {
+    tandan saldo = MBG(1000);
+    buzzer("Saldo awal sistem: %d unit\n", saldo);
+    tandan cairan = cair(250);
+    buzzer("Dana yang dicairkan: %d unit\n", cairan);
+}
+
+hutan pajakSistem() {
+    tandan dana = MBG(1000);
+    pajak(dana, 11);
+    buzzer("Saldo setelah pajak: %d unit\n", dana);
+}
+
+hutan prosesPerintah(buah *perintah, panen *berjalan) {
+    kalauPanen (strcmp(perintah, "bantuan") == 0 || strcmp(perintah, "help") == 0) {
+        bantuan();
+    } kalauTidak kalauPanen (strcmp(perintah, "tentang") == 0 || strcmp(perintah, "ver") == 0) {
+        tentang();
+    } kalauTidak kalauPanen (strcmp(perintah, "dir") == 0 || strcmp(perintah, "ls") == 0) {
+        direktori();
+    } kalauTidak kalauPanen (strcmp(perintah, "cls") == 0 || strcmp(perintah, "clear") == 0) {
+        bersihkanLayar();
+    } kalauTidak kalauPanen (strcmp(perintah, "saldo") == 0) {
+        saldoSistem();
+    } kalauTidak kalauPanen (strcmp(perintah, "pajak") == 0) {
+        pajakSistem();
+    } kalauTidak kalauPanen (strcmp(perintah, "reboot") == 0) {
+        buzzer("Memulai ulang kernel...\n");
+        boot();
+    } kalauTidak kalauPanen (strcmp(perintah, "shutdown") == 0 || strcmp(perintah, "keluar") == 0) {
+        buzzer("Sistem dimatikan. Sampai jumpa.\n");
+        *berjalan = hoaks;
+    } kalauTidak {
+        demoMasyarakat("Perintah tidak dikenal: %s", perintah);
+        buzzer("Ketik 'bantuan' untuk melihat daftar perintah.\n");
+    }
+}
+
+tandan panenUtama() {
+    buah perintah[64];
+    panen berjalan = sesuai;
+
+    boot();
+
+    selama (berjalan) {
+        buzzer("\nWowokOS> ");
+        kalauPanen (fgets(perintah, sizeof(perintah), stdin) == NULL) {
+            pulang;
+        }
+        perintah[strcspn(perintah, "\n")] = '\0';
+        kalauPanen (strcmp(perintah, "") == 0) {
+            lanjutOmonOmon;
+        }
+        prosesPerintah(perintah, &berjalan);
+    }
+
+    setor 0;
+}
