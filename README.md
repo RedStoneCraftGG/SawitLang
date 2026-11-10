@@ -34,6 +34,8 @@ Gak. Proyek ini sifatnya candaan bahasa pemrograman. Tidak ada hal yang harus di
 
 Paling sedikit sentuhan terakhir agar bisa jadi Joke Programing Language yang setidaknya bisa dipakai...
 
+> Update: ada yang beneran bikin jir 💀💀💀
+
 # Implementasi & Cara Pemakaian
 
 ```powershell
