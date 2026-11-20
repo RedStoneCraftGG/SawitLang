@@ -28,13 +28,11 @@ Dan itulah kenapa saya memilih *Sawit* sebagai subjek utamanya.
 
 Ngabisin token AI. Sayang bentar lagi Expired.
 
+> Update: Dapat bansos lagi 🤑
+
 ## Apakah Akan Ada Update Atau Digunakan Secara Serius Kedepannya?
 
-Gak. Proyek ini sifatnya candaan bahasa pemrograman. Tidak ada hal yang harus diseriusin. bahkan tidak ada orang yanng benar benar mendedikasikan 100% proyeknya menggunakan bahasa Sawit sebagai bahasa utamanya. Kalau ada, saya ga habis pikir lagi 💀
-
-Paling sedikit sentuhan terakhir agar bisa jadi Joke Programing Language yang setidaknya bisa dipakai...
-
-> Update: ada yang beneran bikin jir 💀💀💀
+Sudah ada updatenya. Dan juga ada proyek contoh yang benar-benar menggunakan SawitLang ini seperti [Professional Procrastination Management System](https://github.com/flessan/tugasnyawit), dan [WowokOS-Kernel](https://github.com/RedStoneCraftGG/WowokOS-Kernel).
 
 # Implementasi & Cara Pemakaian
 
@@ -71,7 +69,7 @@ pointer yang tidak dilacak, sehingga double-free dan `jual` pada variabel stack
 aman (no-op). `bungkam` dan `bukaSuara` mengontrol output stdout/stderr tanpa
 menutup stream.
 
-# Kamus MVP
+## Kamus MVP
 
 Ringkasan seluruh kata kunci dan fungsi yang dikenali transpiler. Kolom "Padanan"
 adalah hasil translasi ke C/C++. Semua kata kunci bersifat case-sensitive, dan
@@ -153,6 +151,8 @@ pidato {
 | `cair(jumlah)` | `sawit_cair` | cairkan dari ledger (0 bila melebihi saldo) |
 | `beli(byte)` | `sawit_beli` | alokasi heap ter-lacak |
 | `jual(ptr)` | `sawit_jual` | bebaskan; no-op bila pointer tak ter-lacak |
+| `rampas(&dst, &src)` | `sawit_rampas` | pindahkan kepemilikan, `src` jadi `kosong` |
+| `sita(&dst, &src)` | `sawit_rampas` | alias `rampas` |
 | `nyawit(fn)` | `sawit_nyawit` | panggil fungsi lewat pointer: `fn()` |
 | `bersihkanLayar()` | `sawit_bersihkan_layar` | bersihkan layar (`cls`/`clear`) |
 
@@ -176,32 +176,72 @@ tandan panenUtama() {
 
 Padanan nama file build system (`AMDAL.txt` dan kawan-kawan) ada di tabel setelah ini.
 
-Setiap proyek baru dimulai dengan `sawit init`. Generator membuat `src/main.sawit`,
-runtime lokal, transpiler lokal, dan `AMDAL.txt` sebagai padanan CMakeLists.txt.
+## Audit celah kosakata (untuk OS murni)
 
-Gunakan `sawit audit AMDAL.txt` untuk memeriksa struktur AMDAL. Tambahkan `--fix`
-untuk menulis ulang struktur standar dan menyimpan cadangan sebagai `AMDAL.txt.bak`.
+Audit terhadap `examples/wowokos.sawitpp` menemukan bagian yang **masih ditulis
+dengan C/C++ mentah**. Berikut statusnya setelah ekspansi kamus:
 
-| Sawit | Padanan upstream |
+| Celah yang ditemukan | Kode C lama | Sekarang |
+|---|---|---|
+| Baca baris input | `fgets(..., stdin)` | `sadapBaris()` — sudah, newline otomatis dibuang |
+| Baca angka | `scanf("%d", &x)` | `sadap()` + `sadapSisa()` |
+| Baca satu karakter | `getchar()` | `sadapKarakter()` |
+| Matikan input sementara | tidak ada | `tutupTelinga()` / `bukaTelinga()` |
+| Bandingkan string | `strcmp()` | `samaKata()` |
+| Panjang string | `strlen()` | `panjangKata()` |
+| String → angka | `atoi()` | `terjemahAngka()` |
+| Salin string | `strcpy()` | `salinKata()` |
+| Tipe lebar tetap | `uint8_t`/`uint32_t` | `keping8`/`keping16`/`keping32`/`keping64` |
+| Pointer alamat | `uintptr_t` | `alamat` |
+| MMIO register | `volatile uint32_t *` | `menguap keping32 *` |
+| Konstanta/qualifier | `const`/`static`/`unsigned` | `tetap`/`statis`/`takTanda` |
+| Port I/O x86 | `inb()`/`outb()` inline asm | `hisap()` / `semprot()` |
+| Kontrol CPU | `cli`/`sti`/`hlt` | `kunciInterupsi()` / `bukaInterupsi()` / `hentiMesin()` |
+| Tulis VGA | `0xB8000` manual | `tulisLayar()` |
+| Null pointer | `NULL` / `0` | `kosong` |
+| `sizeof` / `enum` / `union` / `typedef` | bawaan C | `seberapa` / `rumpun` / `serikat` / `sebutan` |
+| Transfer kepemilikan pointer | tidak ada | `rampas()` / `sita()` |
+
+Masih **belum** diterjemahkan (disengaja, bukan bug):
+- **Cast C++** (`reinterpret_cast`, `static_cast`) — memakai sintaks C `(tipe)nilai`.
+- **`extern` & `inline`** sudah ada (`luar`, `segera`), tapi jarang dipakai di kernel.
+- **Operand register inline asm selain port** — belum ada alias; tulis `__asm__` langsung.
+- **Driver keyboard buffer-driven** — `sadapKarakter()` mengembalikan *scancode*
+  mentah dari port `0x60`; belum ada scancode→ASCII. `sadap()`/`sadapBaris()` di mode
+  kernel masih stub (kembali `-1`/string kosong).
+- **`new`/`delete` di kernel** — butuh `operator new`; pakai `beli()`/`jual()`.
+
+## Kamus sistem & mode kernel
+
+### Input (hosted)
+
+| Sawit | Padanan | Perilaku |
+|---|---|---|
+| `sadap(fmt, ...)` | `sawit_sadap` | `scanf`, Return jumlah field atau `-1` saat EOF/bisu |
+| `sadapBaris(buf, n)` | `sawit_sadap_baris` | `fgets` + buang `\n`/`\r`; Return `kosong` saat EOF |
+| `sadapKarakter()` | `sawit_sadap_karakter` | `getchar` (kernel: scancode port `0x60`) |
+| `sadapSisa()` | `sawit_sadap_sisa` | buang sisa baris setelah `sadap()` |
+| `tutupTelinga()` / `bukaTelinga()` | `sawit_tutup_telinga` / `sawit_buka_telinga` | matikan/nyalakan stdin |
+
+### String
+
+| Sawit | Padanan |
 |---|---|
-| `AMDAL.txt` | `CMakeLists.txt` |
-| `SuratIzinTanam` | `Makefile` |
-| `ProposalKebun` | `meson.build` |
-| `ProyekStrategisNasional` | `BUILD.bazel` |
-| `IzinTambang.txt` | `conanfile.txt` |
-| `antekModal.json` | `vcpkg.json` |
+| `samaKata(a, b)` | `sawit_sama_kata` (true bila sama) |
+| `panjangKata(s)` | `sawit_panjang_kata` |
+| `salinKata(dst, src)` | `sawit_salin_kata` |
+| `terjemahAngka(s)` | `sawit_terjemah_angka` |
 
-Contoh aplikasi yang lebih besar tersedia di
-`examples/wowokos.sawitpp`, sebuah shell interaktif bergaya MS-DOS dengan boot
-sequence, parser perintah, direktori virtual, alokasi memori (beli/jual/new/delete),
-ledger anggaran (MBG/cair/pajak), menu switch/case (`rapat`/`kasus`), login
-do-while + goto (`pidato`/`janji`/`relokasi`), uptime float/double
-(`pertalite`/`pertamax`), class `Kebun` (`perkebunan`/`jalanProduksi`/...),
-mode senyap (`bungkam`/`bukaSuara`), dan shutdown. File ini sengaja mencobakan
-**seluruh** keyword dan fungsi runtime yang didokumentasikan sebagai showcase bahasa.
+### Tipe, qualifier, dan primitif kernel
 
-Jalankan dengan:
-
-```powershell
-./sawit.exe run examples/wowokos.sawitpp
-```
+| Sawit | Padanan |
+|---|---|
+| `keping8` / `keping16` / `keping32` / `keping64` | `uint8_t` / `uint16_t` / `uint32_t` / `uint64_t` |
+| `alamat` | `uintptr_t` |
+| `takTanda` / `tetap` / `menguap` | `unsigned` / `const` / `volatile` |
+| `statis` / `luar` / `segera` | `static` / `extern` / `inline` |
+| `kosong` / `seberapa` | `NULL` / `sizeof` |
+| `rumpun` / `serikat` / `sebutan` | `enum` / `union` / `typedef` |
+| `semprot(port, nilai)` / `hisap(port)` | `sawit_outb` / `sawit_inb` |
+| `kunciInterupsi()` / `bukaInterupsi()` / `hentiMesin()` | `sawit_cli` / `sawit_sti` / `sawit_hlt` |
+| `tulisLayar(teks)` | `sawit_tulis_layar` (VGA text mode `0xB8000`) |
