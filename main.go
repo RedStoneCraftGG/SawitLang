@@ -16,9 +16,24 @@ import (
 //go:embed sawit_runtime.h
 var runtimeHeader []byte
 
+//go:embed sawit_kernel.h
+var kernelHeader []byte
+
+//go:embed boot/start.S
+var bootStart []byte
+
+//go:embed boot/linker.ld
+var bootLinker []byte
+
 var keywords = map[string]string{
 	"tandan": "int", "pertalite": "float", "pertamax": "double", "buah": "char",
 	"pelepah": "std::string", "panen": "bool", "rodok": "bool", "hutan": "void",
+	// Tipe lebar tetap & qualifier (dipakai driver/MMIO).
+	"keping8": "uint8_t", "keping16": "uint16_t", "keping32": "uint32_t", "keping64": "uint64_t",
+	"alamat": "uintptr_t", "takTanda": "unsigned", "menguap": "volatile",
+	"tetap": "const", "statis": "static", "luar": "extern", "segera": "inline",
+	// Konstanta & operator tambahan.
+	"kosong": "NULL", "seberapa": "sizeof", "rumpun": "enum", "serikat": "union", "sebutan": "typedef",
 	"kalauPanen": "if", "kalauTidak": "else", "rapat": "switch", "kasus": "case",
 	"muter": "for", "selama": "while", "pidato": "do", "janji": "while",
 	"pulang": "break", "lanjutPidato": "continue", "lanjutOmonOmon": "continue",
@@ -34,7 +49,19 @@ var functions = map[string]string{
 	"buzzer": "sawit_buzzer", "bungkam": "sawit_bungkam", "bukaSuara": "sawit_buka_suara",
 	"demoMasyarakat": "sawit_demo_masyarakat", "pajak": "sawit_pajak", "MBG": "sawit_mbg",
 	"nyawit": "sawit_nyawit", "cair": "sawit_cair", "beli": "sawit_beli", "jual": "sawit_jual",
+	"rampas": "sawit_rampas", "sita": "sawit_rampas",
 	"bersihkanLayar": "sawit_bersihkan_layar",
+	// Input — "sadap" menyadap stdin / port keyboard.
+	"sadap": "sawit_sadap", "sadapBaris": "sawit_sadap_baris",
+	"sadapKarakter": "sawit_sadap_karakter", "sadapSisa": "sawit_sadap_sisa",
+	"tutupTelinga": "sawit_tutup_telinga", "bukaTelinga": "sawit_buka_telinga",
+	// String & konversi.
+	"samaKata": "sawit_sama_kata", "panjangKata": "sawit_panjang_kata",
+	"terjemahAngka": "sawit_terjemah_angka", "salinKata": "sawit_salin_kata",
+	// Primitif kernel (x86, GCC/Clang).
+	"semprot": "sawit_outb", "hisap": "sawit_inb",
+	"kunciInterupsi": "sawit_cli", "bukaInterupsi": "sawit_sti",
+	"hentiMesin": "sawit_hlt", "tulisLayar": "sawit_tulis_layar",
 }
 
 var buildAliases = map[string]string{
@@ -45,8 +72,13 @@ var buildAliases = map[string]string{
 func isIdentStart(r rune) bool { return r == '_' || unicode.IsLetter(r) }
 func isIdentPart(r rune) bool  { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
 
-func transpile(source string) string {
+func transpile(source string) string { return transpileMode(source, false) }
+
+func transpileMode(source string, freestanding bool) string {
 	var out strings.Builder
+	if freestanding {
+		out.WriteString("#define SAWIT_FREESTANDING\n")
+	}
 	out.WriteString("#include \"sawit_runtime.h\"\n\n")
 	runes := []rune(source)
 	for i := 0; i < len(runes); {
@@ -129,7 +161,10 @@ func compilerFor(source, requested string) (string, error) {
 	return "", errors.New("compiler tidak ditemukan; pasang GCC/Clang/MSVC atau gunakan --compiler")
 }
 
-func compile(source, output, requested string, keep bool) error {
+func compile(source, output, requested string, keep, freestanding, multiboot bool) error {
+	if multiboot && runtime.GOOS == "windows" && requested == "" {
+		return errors.New("mode --multiboot menghasilkan ELF32; gunakan WSL/Linux atau berikan --compiler cross-toolchain (contoh: i686-elf-gcc)")
+	}
 	compiler, err := compilerFor(source, requested)
 	if err != nil {
 		return err
@@ -150,19 +185,52 @@ func compile(source, output, requested string, keep bool) error {
 		ext = ".cpp"
 	}
 	generated := filepath.Join(tmpDir, "program"+ext)
-	if err := os.WriteFile(generated, []byte(transpile(string(data))), 0644); err != nil {
+	if err := os.WriteFile(generated, []byte(transpileMode(string(data), freestanding)), 0644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "sawit_runtime.h"), runtimeHeader, 0644); err != nil {
 		return err
 	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "sawit_kernel.h"), kernelHeader, 0644); err != nil {
+		return err
+	}
+	startPath := ""
+	linkerPath := ""
+	if multiboot {
+		startPath = filepath.Join(tmpDir, "start.S")
+		linkerPath = filepath.Join(tmpDir, "linker.ld")
+		if err := os.WriteFile(startPath, bootStart, 0644); err != nil {
+			return err
+		}
+		if err := os.WriteFile(linkerPath, bootLinker, 0644); err != nil {
+			return err
+		}
+	}
 	if output == "" {
 		output = strings.TrimSuffix(source, filepath.Ext(source))
-		if runtime.GOOS == "windows" {
+		if multiboot {
+			output += ".elf"
+		} else if runtime.GOOS == "windows" {
 			output += ".exe"
 		}
 	}
-	cmd := exec.Command(compiler, generated, "-I", tmpDir, "-o", output)
+	buildArgs := []string{}
+	if multiboot {
+		buildArgs = append(buildArgs, "-m32", "-ffreestanding", "-fno-builtin",
+			"-fno-stack-protector", "-fno-pie", "-no-pie", "-fno-rtti",
+			"-fno-exceptions", "-nostdlib")
+		buildArgs = append(buildArgs, "-I", tmpDir, "-T", linkerPath,
+			startPath, generated, "-lgcc")
+	} else {
+		buildArgs = append(buildArgs, generated, "-I", tmpDir)
+		if freestanding {
+			buildArgs = append(buildArgs,
+				"-ffreestanding", "-fno-builtin", "-fno-stack-protector",
+				"-fno-pie", "-no-pie", "-nostdlib", "-Wl,-e,main")
+		}
+	}
+	buildArgs = append(buildArgs, "-o", output)
+	cmd := exec.Command(compiler, buildArgs...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }
@@ -180,7 +248,7 @@ func runProgram(source, compiler string, args []string) error {
 	tmp.Close()
 	os.Remove(output)
 	defer os.Remove(output)
-	if err := compile(source, output, compiler, false); err != nil {
+	if err := compile(source, output, compiler, false, false, false); err != nil {
 		return err
 	}
 	cmd := exec.Command(output, args...)
@@ -230,6 +298,18 @@ func initProject(dir string, force bool) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "sawit_runtime.h"), runtimeHeader, 0644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sawit_kernel.h"), kernelHeader, 0644); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "boot"), 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "boot", "start.S"), bootStart, 0644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "boot", "linker.ld"), bootLinker, 0644); err != nil {
 		return err
 	}
 	self, err := os.Executable()
@@ -318,6 +398,9 @@ func sourceArg(args []string) string {
 			i++ // lewati nilai opsi
 			continue
 		}
+		if arg == "--freestanding" || arg == "--multiboot" || arg == "--keep-generated" || arg == "--force" || arg == "--fix" {
+			continue
+		}
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
@@ -342,7 +425,8 @@ func main() {
 			data, e := os.ReadFile(source)
 			err = e
 			if err == nil {
-				result := transpile(string(data))
+				kernelMode := contains(args, "--freestanding") || contains(args, "--multiboot")
+				result := transpileMode(string(data), kernelMode)
 				if output := option(args, "-o"); output != "" {
 					err = os.WriteFile(output, []byte(result), 0644)
 				} else {
@@ -355,9 +439,15 @@ func main() {
 		if source == "" {
 			err = errors.New("source .sawit wajib diisi")
 		} else {
-			err = compile(source, option(args, "-o"), option(args, "--compiler"), contains(args, "--keep-generated"))
+			freestanding := contains(args, "--freestanding") || contains(args, "--multiboot")
+			err = compile(source, option(args, "-o"), option(args, "--compiler"),
+				contains(args, "--keep-generated"), freestanding, contains(args, "--multiboot"))
 		}
 	case "run":
+		if contains(args, "--freestanding") || contains(args, "--multiboot") {
+			err = errors.New("mode --freestanding/--multiboot tidak bisa di-run; gunakan: sawit build")
+			break
+		}
 		source := sourceArg(args)
 		if source == "" {
 			err = errors.New("source .sawit wajib diisi")
