@@ -34,129 +34,139 @@ Ngabisin token AI. Sayang bentar lagi Expired.
 
 Sudah ada updatenya. Dan juga ada proyek contoh yang benar-benar menggunakan SawitLang ini seperti [Professional Procrastination Management System](https://github.com/flessan/tugasnyawit), dan [WowokOS-Kernel](https://github.com/RedStoneCraftGG/WowokOS-Kernel).
 
-# Implementasi & Cara Pemakaian
+## Ringkasan
+
+| Aspek | Keterangan |
+|---|---|
+| Implementasi utama | `main.go` → binary `sawit.exe` (Windows) / `sawit` (Linux) |
+| Alternatif | `sawit_transpiler.py`, mandiri, aset runtime/boot tertanam |
+| Runtime hosted | `sawit_runtime.h` (butuh libc) |
+| Runtime kernel | `sawit_kernel.h` (freestanding, tanpa libc) |
+| Contoh utama | `examples/wowokos-kernel/` — repositori kernel mandiri |
+| Status | v1.1, sudah dipakai untuk membangun kernel Multiboot yang benar-benar boot |
+
+Aset boot (`boot/start.S`, `boot/linker.ld`) dan kedua runtime ditanam ke dalam
+binary Go maupun skrip Python. Artinya binary/skrip bisa dipakai dari folder
+mana pun tanpa menyalin file pendukung.
+
+## Build transpiler
 
 ```powershell
-go build -o sawit.exe .
+# Windows
+go build -trimpath -ldflags="-s -w" -o sawit.exe .
+
+# Linux / WSL
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o sawit .
+```
+
+Atau pakai release zip `sawitlang-v1.1.zip` yang berisi binary siap pakai,
+port Python, contoh, dan `SHA256SUMS`.
+
+## CLI
+
+```
+sawit <perintah> [opsi] <file>
+```
+
+| Perintah | Fungsi |
+|---|---|
+| `transpile` | Cetak hasil translasi ke stdout, atau tulis ke `-o` |
+| `build` | Transpile + kompilasi ke executable |
+| `run` | Build, jalankan, lalu hapus executable sementara |
+| `init` | Buat proyek baru berisi `src/`, runtime, boot, dan `AMDAL.txt` |
+| `audit` | Periksa struktur `AMDAL.txt` |
+
+| Opsi | Berlaku untuk | Fungsi |
+|---|---|---|
+| `-o <path>` | `transpile`, `build` | File keluaran |
+| `--compiler <nama>` | `build`, `run` | Paksa GCC/Clang tertentu, mis. `i686-elf-gcc` |
+| `--keep-generated` | `build` | Simpan file C/C++ hasil transpile |
+| `--freestanding` | `transpile`, `build` | Pakai `sawit_kernel.h`, tanpa libc |
+| `--multiboot` | `transpile`, `build` | ELF32 + header Multiboot 1+2 (implisit freestanding) |
+| `--force` | `init` | Timpa proyek yang sudah ada |
+| `--fix` | `audit` | Tulis ulang `AMDAL.txt` dan simpan cadangan `.bak` |
+| `--` | `run` | Pemisah argumen yang diteruskan ke program |
+
+Contoh:
+
+```powershell
 ./sawit.exe transpile examples/hello.sawit
 ./sawit.exe build examples/hello.sawit -o hello.exe
 ./sawit.exe run examples/hello.sawit
 ./sawit.exe init proyek-baru
-./sawit.exe audit AMDAL.txt
+./sawit.exe audit AMDAL.txt --fix
 ```
 
-Tambahkan folder hasil build ke `PATH` agar dapat dipanggil langsung dari Command
-Prompt sebagai `sawit`.
+Port Python memakai perintah dan opsi yang sama:
 
----
+```powershell
+python sawit_transpiler.py transpile examples/hello.sawit
+python sawit_transpiler.py build examples/hello.sawit -o hello.exe
+```
 
-Perintah `build` mendeteksi GCC/Clang secara otomatis. Compiler juga dapat dipilih
-secara eksplisit dengan `--compiler gcc` atau `--compiler clang`.
-
-Mode `run` membuat executable sementara, menjalankannya, lalu menghapusnya. Jadi
-pengguna cukup memberikan satu file `.sawit` tanpa mengelola hasil build manual.
-
-Versi awal menggunakan translasi berbasis token sehingga keyword di dalam komentar
-dan string tidak ikut berubah. Runtime helper berada di `sawit_runtime.h` dan otomatis
-disertakan oleh hasil transpiler.
-
-Helper yang tersedia: `buzzer`, `bungkam`, `bukaSuara`, `demoMasyarakat`, `pajak`,
-`MBG`, `nyawit`, `cair`, `beli`, `jual`, dan `bersihkanLayar`.
-
-`MBG` mengisi ledger anggaran, `cair` mencairkan saldo yang tersedia, sedangkan
-`beli` dan `jual` memakai allocator yang melacak pointer. `jual` mengabaikan
-pointer yang tidak dilacak, sehingga double-free dan `jual` pada variabel stack
-aman (no-op). `bungkam` dan `bukaSuara` mengontrol output stdout/stderr tanpa
-menutup stream.
+Translasi berbasis token, sehingga keyword di dalam komentar dan string tidak
+ikut berubah. Mode `run` tidak bisa dipakai bersama `--freestanding` atau
+`--multiboot`.
 
 ## Kamus MVP
 
-Ringkasan seluruh kata kunci dan fungsi yang dikenali transpiler. Kolom "Padanan"
-adalah hasil translasi ke C/C++. Semua kata kunci bersifat case-sensitive, dan
-translasi hanya menyentuh token — teks di dalam komentar dan string tidak diubah.
+Semua kata kunci bersifat case-sensitive. Translasi hanya menyentuh token;
+teks di dalam komentar dan string tidak diubah.
 
 ### Tipe data
 
 | Sawit | Padanan | Keterangan |
 |---|---|---|
 | `tandan` | `int` | bilangan bulat |
-| `pertalite` | `float` | pecahan presisi tunggal |
-| `pertamax` | `double` | pecahan presisi ganda |
+| `pertalite` | `float` | presisi tunggal |
+| `pertamax` | `double` | presisi ganda |
 | `buah` | `char` | karakter |
-| `pelepah` | `std::string` | string (butuh C++ / `imporBibit <string>`) |
-| `panen` | `bool` | boolean |
-| `rodok` | `bool` | alias boolean |
+| `pelepah` | `std::string` | butuh C++ / `imporBibit <string>` |
+| `panen` / `rodok` | `bool` | boolean (`rodok` alias) |
 | `hutan` | `void` | tanpa nilai balik |
 
 ### Kontrol alur
 
-| Sawit | Padanan | Keterangan |
-|---|---|---|
-| `kalauPanen` | `if` | |
-| `kalauTidak` | `else` | |
-| `rapat` | `switch` | |
-| `kasus` | `case` | |
-| `muter` | `for` | |
-| `selama` | `while` | |
-| `pidato` | `do` | pembuka `do-while` |
-| `janji` | `while` | penutup `do-while` |
-| `pulang` | `break` | |
-| `lanjutPidato` | `continue` | |
-| `lanjutOmonOmon` | `continue` | alias |
-| `setor` | `return` | |
-| `relokasi` | `goto` | butuh label tujuan |
+| Sawit | Padanan |
+|---|---|
+| `kalauPanen` / `kalauTidak` | `if` / `else` |
+| `rapat` / `kasus` | `switch` / `case` |
+| `muter` / `selama` | `for` / `while` |
+| `pidato` … `janji (kondisi)` | `do` … `while (kondisi)` |
+| `pulang` / `lanjutPidato` | `break` / `continue` |
+| `lanjutOmonOmon` | `continue` (alias) |
+| `setor` | `return` |
+| `relokasi` | `goto` (butuh label) |
 
-`do-while` ditulis sebagai pasangan `pidato` … `janji`:
-
-```sawit
-pidato {
-    // dijalankan minimal sekali
-} janji (kondisi);
-```
-
-### Kelas, struct, namespace, dan akses
+### Kelas, struct, dan namespace
 
 | Sawit | Padanan |
 |---|---|
-| `perkebunan` | `class` |
-| `kopdes` | `struct` |
-| `jalanProduksi` | `public` |
-| `lahanPribadi` | `private` |
-| `lahanPejabat` | `protected` |
+| `perkebunan` / `kopdes` | `class` / `struct` |
+| `jalanProduksi` / `lahanPribadi` / `lahanPejabat` | `public` / `private` / `protected` |
 | `wilayahKebun` | `namespace` |
 | `panenUtama` | `main` |
+| `bakarHutan` / `gusur` | `new` / `delete` (butuh `.sawitpp`) |
 
-### Preprocessor, memori, dan boolean
+Constructor/destructor sengaja tidak diberi alias (`tanam`/`tebang` sudah
+tidak dipakai). Tulis seperti C++ biasa.
 
-| Sawit | Padanan | Keterangan |
-|---|---|---|
-| `imporBibit` | `#include` | |
-| `RUU` | `#define` | |
-| `PerPres` | `#define` | alias |
-| `bakarHutan` | `new` | butuh C++ (`.sawitpp`) |
-| `gusur` | `delete` | butuh C++ (`.sawitpp`) |
-| `sesuai` | `true` | |
-| `hoaks` | `false` | |
+### Preprocessor, qualifier, dan konstanta
 
-### Fungsi runtime
+| Sawit | Padanan |
+|---|---|
+| `imporBibit` | `#include` |
+| `RUU` / `PerPres` | `#define` (`PerPres` alias) |
+| `keping8` … `keping64` | `uint8_t` … `uint64_t` |
+| `alamat` | `uintptr_t` |
+| `takTanda` / `tetap` / `menguap` | `unsigned` / `const` / `volatile` |
+| `statis` / `luar` / `segera` | `static` / `extern` / `inline` |
+| `kosong` / `seberapa` | `NULL` / `sizeof` |
+| `rumpun` / `serikat` / `sebutan` | `enum` / `union` / `typedef` |
+| `sesuai` / `hoaks` | `true` / `false` |
+| `cakramRAM` / `cakramATA` | `SAWIT_DEV_RAM` / `SAWIT_DEV_ATA` |
 
-| Sawit | Padanan | Keterangan |
-|---|---|---|
-| `buzzer(...)` | `sawit_buzzer` | cetak ke stdout (mirip `printf`) |
-| `bungkam(stream)` | `sawit_bungkam` | bisukan stdout/stderr |
-| `bukaSuara(stream)` | `sawit_buka_suara` | nyalakan kembali |
-| `demoMasyarakat(...)` | `sawit_demo_masyarakat` | log ke stderr berprefix `[DEMO MASYARAKAT]` |
-| `pajak(nilai, persen)` | `sawit_pajak` | makro: `nilai -= nilai * persen / 100` |
-| `MBG(jumlah)` | `sawit_mbg` | tambah ke ledger anggaran |
-| `cair(jumlah)` | `sawit_cair` | cairkan dari ledger (0 bila melebihi saldo) |
-| `beli(byte)` | `sawit_beli` | alokasi heap ter-lacak |
-| `jual(ptr)` | `sawit_jual` | bebaskan; no-op bila pointer tak ter-lacak |
-| `rampas(&dst, &src)` | `sawit_rampas` | pindahkan kepemilikan, `src` jadi `kosong` |
-| `sita(&dst, &src)` | `sawit_rampas` | alias `rampas` |
-| `nyawit(fn)` | `sawit_nyawit` | panggil fungsi lewat pointer: `fn()` |
-| `bersihkanLayar()` | `sawit_bersihkan_layar` | bersihkan layar (`cls`/`clear`) |
-
-### Contoh cepat
+### Contoh cepat (hosted)
 
 ```sawit
 imporBibit <stdio.h>
@@ -174,74 +184,151 @@ tandan panenUtama() {
 }
 ```
 
-Padanan nama file build system (`AMDAL.txt` dan kawan-kawan) ada di tabel setelah ini.
+## Runtime & helper
 
-## Audit celah kosakata (untuk OS murni)
+### Hosted (libc)
 
-Audit terhadap `examples/wowokos.sawitpp` menemukan bagian yang **masih ditulis
-dengan C/C++ mentah**. Berikut statusnya setelah ekspansi kamus:
-
-| Celah yang ditemukan | Kode C lama | Sekarang |
+| Sawit | Fungsi C | Keterangan |
 |---|---|---|
-| Baca baris input | `fgets(..., stdin)` | `sadapBaris()` — sudah, newline otomatis dibuang |
-| Baca angka | `scanf("%d", &x)` | `sadap()` + `sadapSisa()` |
-| Baca satu karakter | `getchar()` | `sadapKarakter()` |
-| Matikan input sementara | tidak ada | `tutupTelinga()` / `bukaTelinga()` |
-| Bandingkan string | `strcmp()` | `samaKata()` |
-| Panjang string | `strlen()` | `panjangKata()` |
-| String → angka | `atoi()` | `terjemahAngka()` |
-| Salin string | `strcpy()` | `salinKata()` |
-| Tipe lebar tetap | `uint8_t`/`uint32_t` | `keping8`/`keping16`/`keping32`/`keping64` |
-| Pointer alamat | `uintptr_t` | `alamat` |
-| MMIO register | `volatile uint32_t *` | `menguap keping32 *` |
-| Konstanta/qualifier | `const`/`static`/`unsigned` | `tetap`/`statis`/`takTanda` |
-| Port I/O x86 | `inb()`/`outb()` inline asm | `hisap()` / `semprot()` |
-| Kontrol CPU | `cli`/`sti`/`hlt` | `kunciInterupsi()` / `bukaInterupsi()` / `hentiMesin()` |
-| Tulis VGA | `0xB8000` manual | `tulisLayar()` |
-| Null pointer | `NULL` / `0` | `kosong` |
-| `sizeof` / `enum` / `union` / `typedef` | bawaan C | `seberapa` / `rumpun` / `serikat` / `sebutan` |
-| Transfer kepemilikan pointer | tidak ada | `rampas()` / `sita()` |
+| `buzzer(...)` | `sawit_buzzer` | Cetak ke stdout (mirip `printf`) |
+| `bungkam(stream)` / `bukaSuara(stream)` | `sawit_bungkam` / `sawit_buka_suara` | Matikan/nyalakan output tanpa menutup stream |
+| `demoMasyarakat(...)` | `sawit_demo_masyarakat` | Log stderr berprefix `[DEMO MASYARAKAT]` |
+| `pajak(nilai, persen)` | `sawit_pajak` | `nilai -= nilai * persen / 100` |
+| `MBG(n)` / `cair(n)` | `sawit_mbg` / `sawit_cair` | Ledger anggaran |
+| `beli(byte)` / `jual(ptr)` | `sawit_beli` / `sawit_jual` | Allocator ter-lacak; `jual` aman untuk pointer asing/double-free |
+| `rampas(&dst, &src)` / `sita(...)` | `sawit_rampas` | Pindahkan kepemilikan blok, `src` jadi `kosong` |
+| `nyawit(fn)` | `sawit_nyawit` | Panggil fungsi lewat pointer |
+| `bersihkanLayar()` | `sawit_bersihkan_layar` | Bersihkan layar |
+| `sadap(...)` / `sadapBaris(buf, n)` | `sawit_sadap` / `sawit_sadap_baris` | Baca stdin / baris (newline dibuang) |
+| `sadapKarakter()` / `sadapSisa()` | `sawit_sadap_karakter` / `sawit_sadap_sisa` | Baca karakter / buang sisa input |
+| `tutupTelinga()` / `bukaTelinga()` | `sawit_tutup_telinga` / `sawit_buka_telinga` | Kontrol stdin |
+| `samaKata` / `panjangKata` / `terjemahAngka` / `salinKata` | `sawit_sama_kata` dll. | Utilitas string |
 
-Masih **belum** diterjemahkan (disengaja, bukan bug):
-- **Cast C++** (`reinterpret_cast`, `static_cast`) — memakai sintaks C `(tipe)nilai`.
-- **`extern` & `inline`** sudah ada (`luar`, `segera`), tapi jarang dipakai di kernel.
-- **Operand register inline asm selain port** — belum ada alias; tulis `__asm__` langsung.
-- **Driver keyboard buffer-driven** — `sadapKarakter()` mengembalikan *scancode*
-  mentah dari port `0x60`; belum ada scancode→ASCII. `sadap()`/`sadapBaris()` di mode
-  kernel masih stub (kembali `-1`/string kosong).
-- **`new`/`delete` di kernel** — butuh `operator new`; pakai `beli()`/`jual()`.
+Di mode kernel, `beli`/`jual` memakai heap free-list 64 KB: `jual()` benar-benar
+mengembalikan dan menggabungkan blok, `ukuranBlok(ptr)` melaporkan ukuran payload
+yang valid. `rampas()`/`sita()` tetap berfungsi tanpa copy.
 
-## Kamus sistem & mode kernel
+### Kernel: mesin & input
 
-### Input (hosted)
-
-| Sawit | Padanan | Perilaku |
+| Sawit | Fungsi C | Keterangan |
 |---|---|---|
-| `sadap(fmt, ...)` | `sawit_sadap` | `scanf`, Return jumlah field atau `-1` saat EOF/bisu |
-| `sadapBaris(buf, n)` | `sawit_sadap_baris` | `fgets` + buang `\n`/`\r`; Return `kosong` saat EOF |
-| `sadapKarakter()` | `sawit_sadap_karakter` | `getchar` (kernel: scancode port `0x60`) |
-| `sadapSisa()` | `sawit_sadap_sisa` | buang sisa baris setelah `sadap()` |
-| `tutupTelinga()` / `bukaTelinga()` | `sawit_tutup_telinga` / `sawit_buka_telinga` | matikan/nyalakan stdin |
+| `semprot(port, val)` / `hisap(port)` | `sawit_outb` / `sawit_inb` | Port I/O x86 |
+| `kunciInterupsi()` / `bukaInterupsi()` / `hentiMesin()` | `sawit_cli` / `sawit_sti` / `sawit_hlt` | Kontrol CPU |
+| `tulisLayar(s)` / `tulisWarna(attr, s)` | `sawit_tulis_layar` / `sawit_tulis_warna` | VGA text mode `0xB8000` |
+| `tulisSerial(s)` | `sawit_serial_write` | COM1, 9600 8N1 |
+| `pasangMesin(hz)` | `sawit_pasang_mesin` | GDT + IDT + PIC + PIT + serial + `sti` |
+| `tunda(tick)` / `bacaTick()` | `sawit_tunda` / `sawit_tick` | Delay berbasis PIT |
+| `gentar(pesan)` | `sawit_panic` | Tulis serial + layar, lalu halt |
+| `infoMultiboot()` / `infoRAM()` | `sawit_mb_ok` / `sawit_mb_ram_kb` | Info boot GRUB |
+| `infoPetaMemori(&basis, &ukuran)` | `sawit_mb_largest_usable` | Blok RAM usable terbesar |
+| `sadapScancode()` | `sawit_sadap_scancode` | Scancode mentah dari buffer IRQ1 |
+| `nyalakanUlang()` | `sawit_nyalakan_ulang` | Reset 8042 |
 
-### String
+### Kernel: memori & proses
 
-| Sawit | Padanan |
+| Sawit | Fungsi C | Keterangan |
+|---|---|---|
+| `pasangHalaman()` / `halamanAktif()` | `sawit_paging_init` / `sawit_paging_ok` | Paging identitas 4 MB |
+| `frameTotal()` / `frameBebas()` | `sawit_pmm_total` / `sawit_pmm_free` | Physical memory manager bitmap |
+| `mintaFrame()` / `kembalikanFrame(a)` | `sawit_pmm_alloc_frame` / `sawit_pmm_free_frame` | Alokasi frame 4 KB |
+| `prosesBaru(fn, arg)` | `sawit_process_create` | Task kooperatif ring 0, return PID |
+| `prosesYield()` / `prosesKeluar()` | `sawit_yield` / `sawit_process_exit` | Jadwal / hentikan task |
+| `prosesId()` / `prosesJumlah()` | `sawit_process_current_id` / `sawit_process_count` | Info task |
+| `panggilSistem(n, a, b, c)` | `sawit_syscall` | `int 0x80`, lihat tabel syscall |
+
+### Kernel: penyimpanan & layanan
+
+| Sawit | Fungsi C | Keterangan |
+|---|---|---|
+| `pasangCakram(dev)` | `sawit_ata_init` | Probe ATA PIO LBA28 (polling, `nIEN`) |
+| `adaCakram(dev)` / `sektorCakram(dev)` | `sawit_blk_ok` / `sawit_blk_sectors` | Status & kapasitas block device |
+| `bacaSektor` / `tulisSektor` | `sawit_blk_read` / `sawit_blk_write` | Baca/tulis 1 sektor 512 byte |
+| `formatCakram` / `pasangBerkas` / `terpasangBerkas` | `sawit_fs_format` / `sawit_fs_mount` / `sawit_fs_mounted` | SawitFS |
+| `blokTotal()` / `blokBebas()` | `sawit_fs_total_blocks` / `sawit_fs_free_blocks` | Statistik blok |
+| `buatBerkas` / `bukaBerkas` / `hapusBerkas` / `ukuranBerkas` | `sawit_fs_*` | Operasi berkas |
+| `bacaBerkas(fd, buf, n)` / `tulisBerkas(fd, buf, n)` | `sawit_fs_read` / `sawit_fs_write` | Maks. 512 byte per berkas |
+| `daftarBerkas()` | `sawit_fs_list` | Cetak daftar berkas |
+| `layananBaca/Tulis/Buka/Daftar` | `sawit_sys_read/write/open/list` | FS lewat syscall |
+
+`cakramRAM` = RAM disk 32 KB; `cakramATA` = ATA primary master. SawitFS:
+superblock sektor 0, bitmap sektor 1, 16 inode sektor 2, data mulai sektor 3.
+Ini filesystem belajar, bukan FAT/ext.
+
+### Kernel: userland
+
+| Sawit | Fungsi C | Keterangan |
+|---|---|---|
+| `prosesUserBaru()` | `sawit_user_spawn` | Spawn payload ring 3, return PID atau `-1` |
+| `prosesUserJumlah()` | `sawit_user_count` | Jumlah proses ring 3 aktif |
+| `prosesRing()` | `sawit_current_ring` | CPL saat ini (`0` kernel, `3` user) |
+
+Nomor syscall `int 0x80`: `0` yield, `1` getpid, `2` write, `3` exit,
+`4` fs_read, `5` fs_write, `6` fs_open, `7` fs_list. Gate bernomor 128
+ber-DPL 3 sehingga bisa dipanggil dari ring 3.
+
+### Padanan nama file build system
+
+| Sawit | Upstream |
 |---|---|
-| `samaKata(a, b)` | `sawit_sama_kata` (true bila sama) |
-| `panjangKata(s)` | `sawit_panjang_kata` |
-| `salinKata(dst, src)` | `sawit_salin_kata` |
-| `terjemahAngka(s)` | `sawit_terjemah_angka` |
+| `AMDAL.txt` | `CMakeLists.txt` |
+| `SuratIzinTanam` | `Makefile` |
+| `ProposalKebun` | `meson.build` |
+| `ProyekStrategisNasional` | `BUILD.bazel` |
+| `IzinTambang.txt` | `conanfile.txt` |
+| `antekModal.json` | `vcpkg.json` |
 
-### Tipe, qualifier, dan primitif kernel
+`sawit init` menghasilkan proyek berisi `src/main.sawit`, runtime, boot assets,
+binary transpiler lokal, `AMDAL.txt`, dan `CMakeLists.txt` shim.
 
-| Sawit | Padanan |
-|---|---|
-| `keping8` / `keping16` / `keping32` / `keping64` | `uint8_t` / `uint16_t` / `uint32_t` / `uint64_t` |
-| `alamat` | `uintptr_t` |
-| `takTanda` / `tetap` / `menguap` | `unsigned` / `const` / `volatile` |
-| `statis` / `luar` / `segera` | `static` / `extern` / `inline` |
-| `kosong` / `seberapa` | `NULL` / `sizeof` |
-| `rumpun` / `serikat` / `sebutan` | `enum` / `union` / `typedef` |
-| `semprot(port, nilai)` / `hisap(port)` | `sawit_outb` / `sawit_inb` |
-| `kunciInterupsi()` / `bukaInterupsi()` / `hentiMesin()` | `sawit_cli` / `sawit_sti` / `sawit_hlt` |
-| `tulisLayar(teks)` | `sawit_tulis_layar` (VGA text mode `0xB8000`) |
+## Mode kernel & WowokOS
+
+Ada dua mode build untuk kernel:
+
+- `--freestanding` — memakai `sawit_kernel.h`, tanpa libc. Hasilnya masih binary
+  host (PE/ELF), **belum bisa di-boot**, dan tidak bisa di-`run`.
+- `--multiboot` — menambahkan header Multiboot 1+2, `_start`, dan linker script.
+  Hasilnya ELF32 yang dimuat sekitar `0x100000`, bisa di-boot langsung oleh QEMU
+  lewat `-kernel` atau oleh GRUB lewat ISO.
+
+```bash
+# WSL / Linux
+python3 sawit_transpiler.py build wowokos-kernel/src/main.sawitpp \
+  --multiboot -o build/kernel.elf
+
+qemu-system-i386 -kernel build/kernel.elf -m 128 -no-reboot -no-shutdown
+```
+
+Build Multiboot wajib dari WSL/Linux. TDM-GCC di Windows menghasilkan PE/COFF,
+bukan ELF32; transpiler akan menolak `--multiboot` dengan pesan yang jelas bila
+dipanggil langsung dari Windows tanpa cross-toolchain.
+
+Kernel sudah diuji boot sungguhan di **QEMU** (`-kernel` dan ISO GRUB) maupun
+**VMware** (ISO GRUB). Silakan pakai sub-proyek mandiri untuk pengembangan:
+
+```bash
+cd wowokos-kernel                 # proyek terpisah
+make -f SuratIzinTanam check
+make -f SuratIzinTanam            # build/kernel.elf
+make -f SuratIzinTanam run        # qemu -kernel (jalur utama)
+make -f SuratIzinTanam iso        # build/wowokos.iso
+make -f SuratIzinTanam run-iso
+```
+
+Lihat [WowokOS-Kernel/README.md](https://github.com/RedStoneCraftGG/WowokOS-Kernel/blob/main/README.md) untuk daftar lengkap perintah shell,
+prasyarat QEMU/GRUB, dan panduan troubleshooting panic.
+
+Fitur kernel yang sudah berfungsi: GDT/IDT/PIC/PIT, keyboard IRQ1 dengan
+scancode→ASCII, serial COM1, heap free-list, paging identitas + PMM, task
+kooperatif ring 0, syscall `int 0x80`, RAM disk + ATA PIO, SawitFS, dan userland
+ring 3 dengan validasi pointer.
+
+Belum ada: isolasi alamat per proses (belum ada page directory sendiri),
+scheduler preemptive, FAT/ext, ELF loader, DMA, dan jaringan.
+
+## Test
+
+```bash
+go test ./...                     # unit test (Go)
+bash tests/e2e.sh                 # regression + paritas Go/Python
+bash tests/multiboot.sh           # build + smoke test boot, butuh WSL/Linux
+```
