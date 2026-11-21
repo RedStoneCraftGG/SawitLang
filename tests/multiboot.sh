@@ -113,7 +113,7 @@ fi
 echo ""
 echo "Untuk melihat layar VGA secara interaktif:"
 echo "  $QEMU_BIN ${BOOT_MODE[*]} -m 128 -no-reboot -no-shutdown"
-echo "Harus tampil: splash SAWIT lalu '=== WowokOS Kernel ==='"
+echo "Harus tampil: splash SAWIT, '=== WowokOS Kernel ===', lalu prompt 'WowokOS>'"
 if [ -f "$ISO" ]; then
   echo "ISO juga bisa dibooting di VMware: $ISO"
 else

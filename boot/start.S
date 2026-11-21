@@ -28,6 +28,10 @@ multiboot_header_end:
 .type _start, @function
 _start:
     mov $stack_top, %esp
+    /* GRUB mengirim magic di EAX dan pointer info di EBX. Simpan dulu
+       sebelum caller apa pun mengubah register ini. */
+    mov %eax, sawit_mb_magic
+    mov %ebx, sawit_mb_info
     call main
 1:
     cli
@@ -40,3 +44,11 @@ _start:
 stack_bottom:
     .skip 16384
 stack_top:
+
+.align 4
+.global sawit_mb_magic
+sawit_mb_magic:
+    .skip 4
+.global sawit_mb_info
+sawit_mb_info:
+    .skip 4

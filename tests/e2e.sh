@@ -3,17 +3,18 @@
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
-GO="./sawit.exe"
 PY="python sawit_transpiler.py"
 TMP="/tmp/sawit-e2e"
 rm -rf "$TMP"; mkdir -p "$TMP"
+# Bangun biner uji di TMP supaya suite tidak menimpa artefak rilis di root.
+GO="$TMP/sawit.exe"
 PASS=0; FAIL=0
 ok(){ PASS=$((PASS+1)); printf "  PASS  %s\n" "$1"; }
 no(){ FAIL=$((FAIL+1)); printf "  FAIL  %s\n" "$1"; }
 chk(){ if eval "$2" >/dev/null 2>&1; then ok "$1"; else no "$1"; fi; }
 
 echo "=== 0. Build implementasi utama (Go) ==="
-go build -o sawit.exe . 2>&1 && ok "go build" || no "go build"
+go build -trimpath -ldflags="-s -w" -o "$GO" . 2>&1 && ok "go build" || no "go build"
 
 echo ""
 echo "=== 1. Paritas transpile Go vs Python (byte-identik) ==="
@@ -156,8 +157,20 @@ $GO transpile examples/wowokos-kernel/src/main.sawitpp --multiboot > "$TMP/m-go.
 $PY transpile examples/wowokos-kernel/src/main.sawitpp --multiboot > "$TMP/m-py.c" 2>/dev/null
 diff -q "$TMP/m-go.c" "$TMP/m-py.c" >/dev/null 2>&1 && ok "multiboot parity Go/Py" || no "multiboot parity Go/Py"
 grep -q '#define SAWIT_FREESTANDING' "$TMP/m-go.c" && ok "multiboot implies freestanding" || no "multiboot implies freestanding"
-grep -q '0xE85250D6' boot/start.S && grep -q '_start:' boot/start.S && ok "start.S Multiboot 2" || no "start.S Multiboot 2"
+grep -q '0xE85250D6' boot/start.S && grep -q '_start:' boot/start.S && \
+  grep -q 'sawit_mb_magic' boot/start.S && grep -q 'sawit_mb_info' boot/start.S && \
+  ok "start.S Multiboot 2 + info GRUB" || no "start.S Multiboot 2/infoGRUB"
 grep -q 'ENTRY(_start)' boot/linker.ld && grep -q '1M' boot/linker.ld && ok "linker.ld entry 1MB" || no "linker.ld entry 1MB"
+grep -q 'sawit_pasang_mesin' sawit_kernel.h && \
+  grep -q 'sawit_mb_largest_usable' sawit_kernel.h && \
+  grep -q 'sawit_sadap_baris' sawit_kernel.h && \
+  grep -q 'sawit_blok_ukuran' sawit_kernel.h && \
+  grep -q 'sawit_serial_write' sawit_kernel.h && \
+  ok "runtime kernel: mesin + input + heap free-list" || no "runtime kernel belum lengkap"
+grep -q 'sawit_vga_cursor_update' sawit_kernel.h && \
+  grep -Fq "c == '\b'" sawit_kernel.h && \
+  grep -q 'Buffer penuh' sawit_kernel.h && \
+  ok "konsol: cursor, backspace, buffer penuh" || no "bug visual konsol belum diperbaiki"
 $GO run examples/wowokos-kernel/src/main.sawitpp --multiboot >/dev/null 2>&1 && no "run --multiboot harus ditolak" || ok "run --multiboot ditolak"
 
 echo ""
@@ -229,7 +242,7 @@ $GO init "$TMP/proj" >/dev/null 2>&1 && [ -f "$TMP/proj/src/main.sawit" ] && ok 
 [ -f "$TMP/proj/boot/start.S" ] && [ -f "$TMP/proj/boot/linker.ld" ] && ok "init creates boot assets" || no "init creates boot assets"
 $GO init "$TMP/proj" >/dev/null 2>&1 && no "init refuses existing" || ok "init refuses existing"
 $GO init "$TMP/proj" --force >/dev/null 2>&1 && ok "init --force" || no "init --force"
-( cd "$TMP/proj" && "$ROOT/sawit.exe" run src/main.sawit > "$TMP/proj.out" 2>&1 )
+( cd "$TMP/proj" && "$GO" run src/main.sawit > "$TMP/proj.out" 2>&1 )
 grep -q "Halo dari proyek Sawit!" "$TMP/proj.out" && ok "generated project runs" || no "generated project runs"
 grep -Fq '${SAWIT_EXECUTABLE}' "$TMP/proj/AMDAL.txt" && ok "AMDAL DEPENDS cross-platform" || no "AMDAL DEPENDS cross-platform"
 grep -q 'DEPENDS .*sawit\.exe' "$TMP/proj/AMDAL.txt" && no "AMDAL DEPENDS hardcodes sawit.exe" || ok "AMDAL DEPENDS no hardcoded sawit.exe"
@@ -242,11 +255,11 @@ if command -v cmake >/dev/null 2>&1 && command -v mingw32-make >/dev/null 2>&1; 
     no "cmake build via AMDAL"
   fi
 fi
-( cd "$TMP/proj" && "$ROOT/sawit.exe" audit AMDAL.txt > "$TMP/audit1.out" 2>&1 )
+( cd "$TMP/proj" && "$GO" audit AMDAL.txt > "$TMP/audit1.out" 2>&1 )
 grep -q "struktur valid" "$TMP/audit1.out" && ok "go audit valid" || no "go audit valid"
 printf 'garbage\n' > "$TMP/proj/bad.txt"
-( cd "$TMP/proj" && "$ROOT/sawit.exe" audit bad.txt >/dev/null 2>&1 ) && no "go audit invalid should fail" || ok "go audit invalid fails"
-( cd "$TMP/proj" && "$ROOT/sawit.exe" audit bad.txt --fix >/dev/null 2>&1 ) && [ -f "$TMP/proj/bad.txt.bak" ] && ok "go audit --fix + bak" || no "go audit --fix + bak"
+( cd "$TMP/proj" && "$GO" audit bad.txt >/dev/null 2>&1 ) && no "go audit invalid should fail" || ok "go audit invalid fails"
+( cd "$TMP/proj" && "$GO" audit bad.txt --fix >/dev/null 2>&1 ) && [ -f "$TMP/proj/bad.txt.bak" ] && ok "go audit --fix + bak" || no "go audit --fix + bak"
 printf 'garbage\n' > "$TMP/proj/bad2.txt"
 ( cd "$TMP/proj" && python "$ROOT/sawit_transpiler.py" audit bad2.txt >/dev/null 2>&1 ) && no "py audit invalid should fail" || ok "py audit invalid fails"
 ( cd "$TMP/proj" && python "$ROOT/sawit_transpiler.py" audit bad2.txt --fix >/dev/null 2>&1 ) && [ -f "$TMP/proj/bad2.txt.bak" ] && ok "py audit --fix + bak" || no "py audit --fix + bak"
@@ -275,6 +288,8 @@ cp sawit_transpiler.py examples/hello.sawit "$TMP/standalone/"
   ok "py build membersihkan tmp" || no "py build meninggalkan tmp"
 [ -f examples/wowokos-kernel/tools/sawit ] && [ -f examples/wowokos-kernel/tools/sawit.sha256 ] && \
   ok "bundled transpiler + checksum" || no "bundled transpiler + checksum"
+( cd examples/wowokos-kernel/tools && sha256sum -c sawit.sha256 >/dev/null 2>&1 ) && \
+  ok "checksum binary kernel cocok" || no "checksum binary kernel beda"
 grep -q './tools/sawit' examples/wowokos-kernel/deteksiSawit.sh && \
   ok "detector memprioritaskan binary bawaan" || no "detector tidak memakai binary bawaan"
 [ ! -d examples/wowokos-kernel/boot ] && \
@@ -289,6 +304,165 @@ grep -q 'tulisLayar(R"(' examples/wowokos-kernel/src/main.sawitpp && \
   ok "splash ringkas di source kernel" || no "splash ringkas tidak ada"
 if grep -q '100% READY\|Tekan tombol\|WOWOKOS ::' examples/wowokos-kernel/src/main.sawitpp; then \
   no "splash masih punya teks tambahan"; else ok "splash tanpa teks tambahan"; fi
+grep -q 'pasangMesin(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'sadapBaris(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'infoPetaMemori(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'ukuranBlok(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'tulisSerial(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'WowokOS> ' examples/wowokos-kernel/src/main.sawitpp && \
+  ok "kernel interaktif + info memori + serial" || no "kernel belum interaktif"
+
+echo "=== 13. Memori & proses (paging, PMM, task kooperatif) ==="
+grep -q 'sawit_paging_init' sawit_kernel.h && \
+  grep -q 'sawit_frame_map' sawit_kernel.h && \
+  grep -q 'sawit_pmm_alloc_frame' sawit_kernel.h && \
+  grep -q 'sawit_context_switch' sawit_kernel.h && \
+  grep -q 'sawit_process_create' sawit_kernel.h && \
+  grep -q 'sawit_isr_syscall' sawit_kernel.h && \
+  ok "runtime: paging + PMM + task + syscall hadir" || no "runtime memori/proses tidak lengkap"
+# PMM: mulai semua-terpakai, punya fallback mem_upper, dan mmap menyempurnakan
+python - >/dev/null 2>&1 <<'PY'
+from pathlib import Path
+s = Path('sawit_kernel.h').read_text(encoding='utf-8')
+i = s.index('static void sawit_pmm_init(void)')
+j = s.index('\n}\n', i)
+body = s[i:j]
+assert '= 0xFFu' in body, 'bitmap tidak dimulai dari semua-terpakai'
+assert 'Fallback dari mem_upper' in body, 'tidak ada fallback mem_upper'
+assert 'sawit_frame_map[f >> 3] &= (unsigned char)~(1u << (f & 7u));' in body, \
+    'fallback tidak membebaskan frame di atas 4 MB'
+assert 'type == 1u' in body, 'mmap tidak membebaskan region usable'
+PY
+[ $? -eq 0 ] && ok "PMM: bitmap + fallback mem_upper + mmap refinement" || \
+  no "logika bitmap PMM tidak benar"
+# slot task EXITED harus bisa dipakai ulang oleh prosesBaru()
+python - >/dev/null 2>&1 <<'PY'
+from pathlib import Path
+s = Path('sawit_kernel.h').read_text(encoding='utf-8')
+i = s.index('static int sawit_process_slot(')
+j = s.index('\n}\n', i)
+body = s[i:j]
+assert 'SAWIT_PROC_EXITED' in body, 'slot EXITED tidak bisa dipakai ulang'
+assert 'sawit_process_slot()' in s[s.index('static int sawit_process_create('):], \
+    'prosesBaru() belum memakai pencari slot'
+PY
+[ $? -eq 0 ] && ok "slot task EXITED dipakai ulang prosesBaru()" || \
+  no "slot EXITED tidak didaur ulang"
+# shell harus memanggil yield agar task kooperatif benar-benar jalan
+python - >/dev/null 2>&1 <<'PY'
+from pathlib import Path
+s = Path('examples/wowokos-kernel/src/main.sawitpp').read_text(encoding='utf-8')
+i = s.index('selama (sesuai) {')
+j = s.index('sadapBaris(baris, 64);', i)
+assert 'prosesYield()' in s[i:j], 'shell tidak memberi jatah ke task'
+PY
+[ $? -eq 0 ] && ok "shell memberi jatah CPU ke task (yield)" || \
+  no "shell tidak pernah yield; task tidak jalan"
+$GO transpile examples/wowokos-kernel/src/main.sawitpp -o "$TMP/mem.cpp" 2>/dev/null && \
+  grep -q 'sawit_paging_init' "$TMP/mem.cpp" && \
+  grep -q 'sawit_process_create' "$TMP/mem.cpp" && \
+  grep -q 'sawit_yield' "$TMP/mem.cpp" && \
+  grep -q 'sawit_syscall' "$TMP/mem.cpp" && \
+  ok "transpile: kosakata memori/proses dipetakan" || no "mapping memori/proses gagal"
+python sawit_transpiler.py transpile examples/wowokos-kernel/src/main.sawitpp -o "$TMP/mem_py.cpp" 2>/dev/null && \
+  cmp -s "$TMP/mem.cpp" "$TMP/mem_py.cpp" && \
+  ok "paritas Go/Python pada kernel memori/proses" || no "paritas Go/Python beda"
+grep -q 'pasangHalaman(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'prosesBaru(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'prosesYield(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'panggilSistem(' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q '"ps"' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q '"spawn"' examples/wowokos-kernel/src/main.sawitpp && \
+  ok "demo kernel: task + shell ps/spawn/yield/sys" || no "demo kernel belum memakai task"
+grep -q '### Kernel: memori & proses' README.md && \
+  grep -q 'pasangHalaman' README.md && grep -q 'prosesBaru' README.md && \
+  ok "README mendokumentasikan memori & proses" || no "README belum update"
+# context switch harus naked: compiler epilogue (popl ebp; ret) merusak frame task
+grep -q '__attribute__((naked)) static void sawit_context_switch' sawit_kernel.h && \
+  grep -q '"pusha\\n\\t"' sawit_kernel.h && \
+  grep -q '"ret\\n\\t"' sawit_kernel.h && \
+  ok "context switch naked (tanpa epilogue compiler)" || \
+  no "context switch masih punya prologue/epilogue compiler"
+# PMM perlu fallback mem_upper supaya tidak 0 frame bebas saat mmap partial
+python - >/dev/null 2>&1 <<'PY'
+from pathlib import Path
+s = Path('sawit_kernel.h').read_text(encoding='utf-8')
+i = s.index('static void sawit_pmm_init(void)')
+j = s.index('\n}\n', i)
+body = s[i:j]
+assert 'Fallback dari mem_upper' in body, 'PMM tidak punya fallback mem_upper'
+PY
+[ $? -eq 0 ] && ok "PMM punya fallback mem_upper" || no "PMM tanpa fallback mem_upper"
+grep -q 'sawit_isr_pagefault' sawit_kernel.h && \
+  grep -q 'sawit_idt_set(14' sawit_kernel.h && \
+  ok "handler page fault/exception CPU" || no "handler exception belum ada"
+
+echo "=== 14. Penyimpanan & layanan kernel ==="
+grep -q 'sawit_ramdisk' sawit_kernel.h && \
+  grep -q 'sawit_ata_init' sawit_kernel.h && \
+  grep -q 'sawit_ata_read' sawit_kernel.h && \
+  grep -q 'sawit_ata_write' sawit_kernel.h && \
+  grep -q 'sawit_blk_read' sawit_kernel.h && \
+  ok "runtime: block device RAM + ATA PIO" || no "block device tidak lengkap"
+grep -q 'sawit_fs_format' sawit_kernel.h && \
+  grep -q 'sawit_fs_mount' sawit_kernel.h && \
+  grep -q 'sawit_fs_create' sawit_kernel.h && \
+  grep -q 'sawit_fs_read' sawit_kernel.h && \
+  grep -q 'sawit_fs_write' sawit_kernel.h && \
+  grep -q 'sawit_fs_remove' sawit_kernel.h && \
+  ok "runtime: SawitFS format/mount/file ops" || no "filesystem tidak lengkap"
+grep -q 'case 4: /\* fs_read' sawit_kernel.h && \
+  grep -q 'case 7: /\* fs_list' sawit_kernel.h && \
+  grep -q 'sawit_sys_read' sawit_kernel.h && \
+  ok "syscall layanan fs (baca/tulis/buka/daftar)" || no "syscall fs belum ada"
+grep -q '0x3F6, 0x02u' sawit_kernel.h && \
+  ok "ATA nIEN aktif (tidak memicu IRQ)" || no "ATA IRQ belum dimatikan"
+grep -q 'sawit_syscall_dispatch' sawit_kernel.h && \
+  grep -q '__attribute__((naked)) static void sawit_isr_syscall(void)' sawit_kernel.h && \
+  grep -q 'pushl \$128' sawit_kernel.h && \
+  grep -q 'call sawit_syscall_dispatch' sawit_kernel.h && \
+  grep -q 'iret' sawit_kernel.h && \
+  ok "stub syscall menaruh frame register lengkap" || no "stub syscall frame tidak lengkap"
+awk '/Compile-check Windows \(COFF\)/{marker=NR}
+     /__attribute__\(\(interrupt\)\) sawit_isr_syscall\(void \*raw\)/{if(!marker||NR<marker) bad=1}
+     END{exit bad?1:0}' sawit_kernel.h && \
+  ok "fallback interrupt syscall hanya untuk compile-check COFF" || \
+  no "handler syscall interrupt tidak ter-guarded"
+$GO transpile examples/wowokos-kernel/src/main.sawitpp -o "$TMP/store.cpp" 2>/dev/null && \
+  grep -q 'sawit_fs_format' "$TMP/store.cpp" && \
+  grep -q 'sawit_fs_mount' "$TMP/store.cpp" && \
+  grep -q 'sawit_fs_create' "$TMP/store.cpp" && \
+  grep -q 'sawit_fs_read' "$TMP/store.cpp" && \
+  grep -q 'sawit_sys_read' "$TMP/store.cpp" && \
+  ok "transpile: kosakata penyimpanan dipetakan" || no "mapping storage gagal"
+python sawit_transpiler.py transpile examples/wowokos-kernel/src/main.sawitpp -o "$TMP/store_py.cpp" 2>/dev/null && \
+  cmp -s "$TMP/store.cpp" "$TMP/store_py.cpp" && \
+  ok "paritas Go/Python pada demo storage" || no "paritas Go/Python storage beda"
+for cmd in disk df ls cat touch write rm fssys sysread; do
+  grep -q "\"$cmd\"" examples/wowokos-kernel/src/main.sawitpp || \
+    no "shell storage: perintah $cmd tidak ada"
+done
+ok "shell storage: disk/df/ls/cat/touch/write/rm/fssys/sysread" || true
+grep -q 'formatCakram(cakramRAM)' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'pasangBerkas(cakramRAM)' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'buatBerkas("README")' examples/wowokos-kernel/src/main.sawitpp && \
+  ok "boot: format + mount + berkas contoh" || no "boot storage belum lengkap"
+grep -q '### Kernel: penyimpanan & layanan' README.md && \
+  grep -q 'formatCakram' README.md && grep -q 'sawit_fs_format' README.md && \
+  ok "README mendokumentasikan penyimpanan" || no "README belum update storage"
+
+[ -f release/sawitlang-v1.1.zip ] && ok "arsip rilis v1.1 tersedia" || no "arsip rilis v1.1 tidak ada"
+python - >/dev/null 2>&1 <<'PY'
+import hashlib
+import zipfile
+with zipfile.ZipFile('release/sawitlang-v1.1.zip') as zf:
+    assert zf.testzip() is None
+    lines = zf.read('sawitlang-v1.1/SHA256SUMS').decode('utf-8').splitlines()
+    for line in lines:
+        digest, name = line.split('  ', 1)
+        assert digest == hashlib.sha256(zf.read('sawitlang-v1.1/' + name)).hexdigest()
+PY
+[ $? -eq 0 ] && ok "checksum dalam zip rilis cocok" || no "checksum zip rilis beda"
 grep -Fq 'run: $(ELF)' examples/wowokos-kernel/SuratIzinTanam && \
   ok "run target memakai -kernel" || no "run target bukan -kernel"
 [ -f examples/wowokos-kernel/buatIso.sh ] && \
@@ -318,6 +492,50 @@ case "$(uname -s 2>/dev/null)" in
     echo "  SKIP  guard Windows (berjalan di $(uname -s))"
     ;;
 esac
+
+echo "=== 15. Userland (ring 3) ==="
+grep -q 'sawit_idt_set_user' sawit_kernel.h && \
+  grep -q '0xEE' sawit_kernel.h && \
+  grep -q 'sawit_idt_set_user(128' sawit_kernel.h && \
+  ok "gate syscall DPL=3 untuk ring 3" || no "gate syscall masih DPL=0"
+grep -q '__attribute__((naked)) static void sawit_context_switch_user' sawit_kernel.h && \
+  grep -q 'iret' sawit_kernel.h && \
+  ok "context switch user lewat iret" || no "context switch user tidak ada"
+grep -q '0x23u' sawit_kernel.h && grep -q '0x1Bu' sawit_kernel.h && \
+  grep -q '0x202u' sawit_kernel.h && \
+  ok "frame iret memakai selector user RPL3" || no "frame iret selector salah"
+grep -q 'sawit_page_dir\[0\].*| 7u' sawit_kernel.h && \
+  ok "PDE 0 bertanda user (bit U/S)" || no "PDE 0 masih supervisor-only"
+grep -q 'sawit_page_allow_user' sawit_kernel.h && \
+  grep -q '|= 4u' sawit_kernel.h && \
+  grep -q 'invlpg' sawit_kernel.h && \
+  ok "halaman user dibuka lewat bit U/S" || no "bit U/S belum diset"
+grep -q 'movl \$0x23, %%eax' sawit_kernel.h && \
+  grep -q 'movl \$0x10, %%eax' sawit_kernel.h && \
+  ok "segmen DS/ES disesuaikan per CPL" || no "segmen data belum diganti saat switch"
+grep -q 'sawit_user_ptr_ok' sawit_kernel.h && \
+  grep -q 'sawit_user_ptr_ok(f->ecx, f->edx)' sawit_kernel.h && \
+  ok "syscall write memvalidasi pointer user" || no "validasi pointer user tidak ada"
+grep -q 'sawit_user_spawn' sawit_kernel.h && \
+  grep -q 'sawit_page_allow_user(code)' sawit_kernel.h && \
+  grep -q 'sawit_page_allow_user(data)' sawit_kernel.h && \
+  grep -q 'sawit_page_allow_user(stack)' sawit_kernel.h && \
+  ok "payload, pesan, dan stack user dipetakan" || no "spawn user belum memetakan halaman"
+grep -q 'sawit_user_payload' sawit_kernel.h && \
+  grep -q 'aligned(4096)' sawit_kernel.h && \
+  grep -q 'int \$0x80' sawit_kernel.h && \
+  ok "payload user mandiri lewat syscall" || no "payload user tidak ada"
+grep -q 'prosesUserBaru' main.go && grep -q 'prosesUserJumlah' main.go && \
+  grep -q 'prosesUserBaru' sawit_transpiler.py && grep -q 'prosesRing' sawit_transpiler.py && \
+  ok "kosakata userland di Go & Python" || no "kosakata userland belum dipetakan"
+grep -q 'prosesUserBaru()' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'prosesUserJumlah()' examples/wowokos-kernel/src/main.sawitpp && \
+  grep -q 'user  yield' examples/wowokos-kernel/src/main.sawitpp && \
+  ok "shell WowokOS punya perintah user" || no "perintah user belum ada di demo"
+$GO transpile examples/wowokos-kernel/src/main.sawitpp --freestanding > "$TMP/u-go.c" 2>/dev/null && \
+$PY transpile examples/wowokos-kernel/src/main.sawitpp --freestanding > "$TMP/u-py.c" 2>/dev/null && \
+diff -q "$TMP/u-go.c" "$TMP/u-py.c" >/dev/null 2>&1 && \
+  ok "paritas Go/Python pada demo userland" || no "paritas demo userland beda"
 
 echo ""
 echo "================================"

@@ -43,6 +43,8 @@ var keywords = map[string]string{
 	"PerPres": "#define", "bakarHutan": "new", "gusur": "delete",
 	"sesuai": "true", "hoaks": "false",
 	"relokasi": "goto", "panenUtama": "main",
+	// Konstanta block device.
+	"cakramRAM": "SAWIT_DEV_RAM", "cakramATA": "SAWIT_DEV_ATA",
 }
 
 var functions = map[string]string{
@@ -62,6 +64,34 @@ var functions = map[string]string{
 	"semprot": "sawit_outb", "hisap": "sawit_inb",
 	"kunciInterupsi": "sawit_cli", "bukaInterupsi": "sawit_sti",
 	"hentiMesin": "sawit_hlt", "tulisLayar": "sawit_tulis_layar",
+	"tulisWarna": "sawit_tulis_warna", "tulisSerial": "sawit_serial_write",
+	"pasangMesin": "sawit_pasang_mesin", "tunda": "sawit_tunda",
+	"bacaTick": "sawit_tick", "gentar": "sawit_panic",
+	"infoMultiboot": "sawit_mb_ok", "infoRAM": "sawit_mb_ram_kb",
+	"infoPetaMemori": "sawit_mb_largest_usable",
+	"nyalakanUlang":  "sawit_nyalakan_ulang",
+	"sadapScancode":  "sawit_sadap_scancode", "ukuranBlok": "sawit_blok_ukuran",
+	"pasangHalaman": "sawit_paging_init", "halamanAktif": "sawit_paging_ok",
+	"frameTotal": "sawit_pmm_total", "frameBebas": "sawit_pmm_free",
+	"mintaFrame": "sawit_pmm_alloc_frame", "kembalikanFrame": "sawit_pmm_free_frame",
+	"prosesBaru": "sawit_process_create", "prosesYield": "sawit_yield",
+	"prosesKeluar": "sawit_process_exit", "prosesId": "sawit_process_current_id",
+	"prosesJumlah": "sawit_process_count", "panggilSistem": "sawit_syscall",
+	// Userland (ring 3).
+	"prosesUserBaru": "sawit_user_spawn", "prosesUserJumlah": "sawit_user_count",
+	"prosesRing": "sawit_current_ring",
+	// Penyimpanan: block device + filesystem + layanan syscall.
+	"pasangCakram": "sawit_ata_init", "adaCakram": "sawit_blk_ok",
+	"sektorCakram": "sawit_blk_sectors", "bacaSektor": "sawit_blk_read",
+	"tulisSektor":  "sawit_blk_write",
+	"formatCakram": "sawit_fs_format", "pasangBerkas": "sawit_fs_mount",
+	"terpasangBerkas": "sawit_fs_mounted", "blokTotal": "sawit_fs_total_blocks",
+	"blokBebas": "sawit_fs_free_blocks", "buatBerkas": "sawit_fs_create",
+	"bukaBerkas": "sawit_fs_open", "bacaBerkas": "sawit_fs_read",
+	"tulisBerkas": "sawit_fs_write", "hapusBerkas": "sawit_fs_remove",
+	"ukuranBerkas": "sawit_fs_size", "daftarBerkas": "sawit_fs_list",
+	"layananBaca": "sawit_sys_read", "layananTulis": "sawit_sys_write",
+	"layananBuka": "sawit_sys_open", "layananDaftar": "sawit_sys_list",
 }
 
 var buildAliases = map[string]string{
@@ -218,7 +248,7 @@ func compile(source, output, requested string, keep, freestanding, multiboot boo
 	if multiboot {
 		buildArgs = append(buildArgs, "-m32", "-ffreestanding", "-fno-builtin",
 			"-fno-stack-protector", "-fno-pie", "-no-pie", "-fno-rtti",
-			"-fno-exceptions", "-nostdlib")
+			"-fno-exceptions", "-mno-sse", "-mno-mmx", "-mno-80387", "-msoft-float", "-nostdlib")
 		buildArgs = append(buildArgs, "-I", tmpDir, "-T", linkerPath,
 			startPath, generated, "-lgcc")
 	} else {
@@ -226,7 +256,7 @@ func compile(source, output, requested string, keep, freestanding, multiboot boo
 		if freestanding {
 			buildArgs = append(buildArgs,
 				"-ffreestanding", "-fno-builtin", "-fno-stack-protector",
-				"-fno-pie", "-no-pie", "-nostdlib", "-Wl,-e,main")
+				"-fno-pie", "-no-pie", "-mno-sse", "-mno-mmx", "-mno-80387", "-msoft-float", "-nostdlib", "-Wl,-e,main")
 		}
 	}
 	buildArgs = append(buildArgs, "-o", output)

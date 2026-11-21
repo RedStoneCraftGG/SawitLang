@@ -96,6 +96,20 @@ func TestSystemVocabularyMapping(t *testing.T) {
     terjemahAngka(a); salinKata(a, b);
     semprot(p, 1); hisap(p); kunciInterupsi(); bukaInterupsi();
     hentiMesin(); tulisLayar(a);
+    pasangMesin(100); tulisSerial(a); tunda(1); bacaTick(); gentar(a);
+    infoMultiboot(); infoRAM(); infoPetaMemori(&p, &n);
+    nyalakanUlang(); sadapScancode(); ukuranBlok(p); tulisWarna(7, a);
+    pasangHalaman(); halamanAktif(); frameTotal(); frameBebas();
+    mintaFrame(); kembalikanFrame(p); prosesBaru(f, p); prosesYield();
+    prosesKeluar(); prosesId(); prosesJumlah(); panggilSistem(0, 1, 2, 3);
+    pasangCakram(); adaCakram(cakramRAM); sektorCakram(cakramRAM);
+    bacaSektor(cakramRAM, 0, p); tulisSektor(cakramRAM, 0, p);
+    formatCakram(cakramRAM); pasangBerkas(cakramRAM); terpasangBerkas();
+    blokTotal(); blokBebas(); buatBerkas(a); bukaBerkas(a);
+    bacaBerkas(0, p, 16); tulisBerkas(0, p, 16); hapusBerkas(a);
+    ukuranBerkas(a); daftarBerkas(); layananBaca(0, p, 8);
+    layananTulis(0, p, 8); layananBuka(a); layananDaftar();
+    prosesUserBaru(); prosesUserJumlah(); prosesRing();
 `)
 	mustContain(t, out,
 		"uint8_t a;", "uint16_t b;", "uint32_t c;", "uint64_t d;",
@@ -108,6 +122,24 @@ func TestSystemVocabularyMapping(t *testing.T) {
 		"sawit_sama_kata(", "sawit_panjang_kata(", "sawit_terjemah_angka(",
 		"sawit_salin_kata(", "sawit_outb(p, 1)", "sawit_inb(p)",
 		"sawit_cli()", "sawit_sti()", "sawit_hlt()", "sawit_tulis_layar(a)",
+		"sawit_pasang_mesin(100)", "sawit_serial_write(a)", "sawit_tunda(1)",
+		"sawit_tick()", "sawit_panic(a)", "sawit_mb_ok()", "sawit_mb_ram_kb()",
+		"sawit_mb_largest_usable(&p, &n)", "sawit_nyalakan_ulang()",
+		"sawit_sadap_scancode()", "sawit_blok_ukuran(p)", "sawit_tulis_warna(7, a)",
+		"sawit_paging_init()", "sawit_paging_ok()", "sawit_pmm_total()",
+		"sawit_pmm_free()", "sawit_pmm_alloc_frame()", "sawit_pmm_free_frame(p)",
+		"sawit_process_create(f, p)", "sawit_yield()", "sawit_process_exit()",
+		"sawit_process_current_id()", "sawit_process_count()", "sawit_syscall(0, 1, 2, 3)",
+		"sawit_ata_init()", "sawit_blk_ok(SAWIT_DEV_RAM)",
+		"sawit_blk_sectors(SAWIT_DEV_RAM)",
+		"sawit_blk_read(SAWIT_DEV_RAM, 0, p)", "sawit_blk_write(SAWIT_DEV_RAM, 0, p)",
+		"sawit_fs_format(SAWIT_DEV_RAM)", "sawit_fs_mount(SAWIT_DEV_RAM)",
+		"sawit_fs_mounted()", "sawit_fs_total_blocks()", "sawit_fs_free_blocks()",
+		"sawit_fs_create(a)", "sawit_fs_open(a)", "sawit_fs_read(0, p, 16)",
+		"sawit_fs_write(0, p, 16)", "sawit_fs_remove(a)", "sawit_fs_size(a)",
+		"sawit_fs_list()", "sawit_sys_read(0, p, 8)", "sawit_sys_write(0, p, 8)",
+		"sawit_sys_open(a)", "sawit_sys_list()",
+		"sawit_user_spawn()", "sawit_user_count()", "sawit_current_ring()",
 	)
 }
 
@@ -125,6 +157,56 @@ func TestBootAssetsEmbedded(t *testing.T) {
 	}
 	if !strings.Contains(string(bootLinker), "ENTRY(_start)") || !strings.Contains(string(bootLinker), "1M") {
 		t.Errorf("boot/linker.ld tidak ter-embed dengan benar")
+	}
+	if !strings.Contains(string(bootStart), "sawit_mb_magic") || !strings.Contains(string(bootStart), "sawit_mb_info") {
+		t.Errorf("start.S belum menyimpan informasi Multiboot")
+	}
+	for _, symbol := range []string{"sawit_pasang_mesin", "sawit_mb_largest_usable", "sawit_sadap_baris", "sawit_blok_ukuran", "sawit_paging_init", "sawit_process_create", "sawit_context_switch", "sawit_syscall", "sawit_ata_init", "sawit_fs_format", "sawit_fs_mount", "sawit_fs_read", "sawit_fs_write", "sawit_ramdisk"} {
+		if !strings.Contains(string(kernelHeader), symbol) {
+			t.Errorf("runtime kernel kehilangan %s", symbol)
+		}
+	}
+}
+
+func TestSyscallStubFrame(t *testing.T) {
+	h := string(kernelHeader)
+	for _, pattern := range []string{
+		"sawit_syscall_dispatch",
+		"__attribute__((naked)) static void sawit_isr_syscall(void)",
+		"pushl $128",
+		"pusha",
+		"call sawit_syscall_dispatch",
+		"iret",
+	} {
+		if !strings.Contains(h, pattern) {
+			t.Errorf("stub syscall kehilangan %q", pattern)
+		}
+	}
+	// Regresi: atribut interrupt GCC hanya menaruh EIP, bukan frame lengkap.
+	// Fallback COFF (compile-check Windows) boleh memakainya, tapi hanya jika
+	// berada di balik penanda #else yang jelas.
+	buggy := "__attribute__((interrupt)) sawit_isr_syscall(void *raw)"
+	if idx := strings.Index(h, buggy); idx >= 0 && !strings.Contains(h[:idx], "Compile-check Windows (COFF)") {
+		t.Errorf("handler syscall interrupt tidak berada di fallback COFF")
+	}
+}
+
+func TestUserlandPrimitives(t *testing.T) {
+	h := string(kernelHeader)
+	for _, pattern := range []string{
+		"sawit_idt_set_user", "0xEE",
+		"__attribute__((naked)) static void sawit_context_switch_user",
+		"0x23u", "0x1Bu", "0x202u",
+		"sawit_page_allow_user", "|= 4u", "invlpg",
+		"sawit_page_dir[0] = (uint32_t)(uintptr_t)&sawit_page_table_low | 7u",
+		"movl $0x23, %%eax", "movl $0x10, %%eax",
+		"sawit_user_ptr_ok", "sawit_user_spawn",
+		"sawit_user_payload", "int $0x80",
+		"sawit_user_count", "sawit_current_ring",
+	} {
+		if !strings.Contains(h, pattern) {
+			t.Errorf("runtime userland kehilangan %q", pattern)
+		}
 	}
 }
 
